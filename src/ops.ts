@@ -511,3 +511,15 @@ defBW("setDiag", (g) => {
   // return bo.getDiag(g);
   throw new Error("Not Implemented.");
 });
+
+export const conv2d = defFW("conv2d",
+  (input: types.BasicTensor, filter: types.BasicTensor,
+   opts: types.ConvOpts) => {
+    return bo.conv2d(input, filter, opts);
+  });
+defBW("conv2d",
+  (g) => {
+    throw new Error("Not Implemented.");
+  }, (g) => {
+    throw new Error("Not Implemented.");
+  });
