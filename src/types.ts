@@ -100,7 +100,12 @@ export interface BackendOps {
   cast(x: BasicTensor, dtype: DType): BasicTensor;
   oneHot(x: BasicTensor, depth: number, onValue: number,
          offValue: number): BasicTensor;
+
   conv2d(input: BasicTensor, filter: BasicTensor, opts: ConvOpts): BasicTensor;
+  conv2dBackpropFilter(gradient: BasicTensor, input: BasicTensor,
+                       filterShape: Shape, opts: ConvOpts): BasicTensor;
+  conv2dBackpropInput(gradient: BasicTensor, inputShape: Shape,
+                      filter: BasicTensor, opts: ConvOpts): BasicTensor;
 }
 
 // A TapeEntry is created every time an op is executed. It is the bookkeeping

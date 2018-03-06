@@ -15,117 +15,74 @@
 
 import { test } from "../tools/tester";
 import { range, Tensor } from "./api";
+import { backend, bo } from "./backend";
+import { cases, ConvTestCase } from "./conv_testcases";
 import { assertAllClose } from "./tensor_util";
-import { DType, ImageFormat, Padding } from "./types";
+import { ConvOpts, DType, Shape } from "./types";
 
-// For easy sanity checking, the test cases were ported from
-// tslint:disable-next-line:max-line-length
-// https://github.com/tensorflow/tensorflow/blob/1f441c191f9a6d8f27b32b1c19c55f76aaf9e387/tensorflow/compiler/tests/conv2d_test.py#L79-L177
-// Dilation tests skipped entirely for now.
+const format = "NHWC";
 
-interface ConvExample {
-  inputShape: [number, number, number, number]; // NHWC
-  filterShape: [number, number, number, number]; // H W InChans OutChans
-  strides: [number, number]; // [column, row ]
-  padding: Padding;
-  expected: number[];
-}
-
-test(async function testConv2D1x1Filter() {
-  verify({
-    inputShape: [1, 2, 3, 3],
-    filterShape: [1, 1, 3, 3],
-    strides: [1, 1],
-    padding: "valid",
-    expected: [
-      30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0, 138.0,
-      171.0, 204.0, 174.0, 216.0, 258.0, 210.0, 261.0, 312.0
-    ],
-  });
-});
-
-/* TODO DL Fails here.
-test(async function testConv2DEmpty() {
-  verify({
-    inputShape: [0, 2, 3, 3],
-    filterShape: [1, 1, 3, 3],
-    strides: [1, 1],
-    padding: "valid",
-    expected: [],
-  });
-});
-*/
-
-test(async function testConv2D2x2Filter() {
-  verify({
-    inputShape: [1, 2, 3, 3],
-    filterShape: [2, 2, 3, 3],
-    strides: [1, 1],
-    padding: "valid",
-    expected: [2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0],
-  });
-});
-
-test(async function testConv2D1x2Filter() {
-  verify({
-    inputShape: [1, 2, 3, 3],
-    filterShape: [1, 2, 3, 3],
-    strides: [1, 1],
-    padding: "valid",
-    expected: [ 231.0, 252.0, 273.0, 384.0, 423.0, 462.0, 690.0, 765.0,
-      840.0, 843.0, 936.0, 1029.0 ]
-  });
-});
-
-test(async function testConv2D2x2FilterStride2() {
-  verify({
-    inputShape: [1, 2, 3, 3],
-    filterShape: [2, 2, 3, 3],
-    strides: [2, 2],
-    padding: "valid",
-    expected: [2271.0, 2367.0, 2463.0],
-  });
-});
-
-test(async function testConv2D2x2FilterStride2Same() {
-  verify({
-    inputShape: [1, 2, 3, 3],
-    filterShape: [2, 2, 3, 3],
-    strides: [2, 2],
-    padding: "same",
-    expected: [2271.0, 2367.0, 2463.0, 1230.0, 1305.0, 1380.0]
-  });
-});
-
-function verify(ex: ConvExample) {
-  const formats: ImageFormat[] = ["NHWC"];  // TODO test NCHW.
-  for (const format of formats) {
-    const actual = setupValues(format, "float32", ex);
-    assertAllClose(actual.dataSync(), ex.expected);
+function defineTests(suite: string,
+                     fn: (c: ConvTestCase) => Tensor) {
+  for (const c of cases[suite]) {
+    test({
+      fn: () => {
+        if (c.skip && c.skip.indexOf(backend) >= 0) {
+          console.log(`Skip ${c.name}. skip = "${c.skip}"`);
+          return;
+        }
+        const actual = fn(c);
+        assertAllClose(actual.dataSync(), c.expected);
+      },
+      name: `conv_${suite}_${c.name}`,
+    });
   }
 }
 
-function setupValues(format: ImageFormat, dtype: DType,
-                     ex: ConvExample): Tensor {
-  let input = range(1, prod(ex.inputShape) + 1)
-    .cast(dtype).reshape(ex.inputShape);
-  if (format === "NCHW") input = NCHWToNHWC(input);
-  const filter = range(1, prod(ex.filterShape) + 1)
-    .cast(dtype).reshape(ex.filterShape);
-  let r = input.conv2d(filter, {
-    strides: ex.strides,
-    padding: ex.padding,
+// Forward pass tests.
+defineTests("fw", (c: ConvTestCase): Tensor => {
+  const input = testInput("float32", c.inputShape);
+  const filter = testInput("float32", c.filterShape);
+  return input.conv2d(filter, {
+    strides: c.strides,
+    padding: c.padding,
     format,
   });
-  if (format === "NCHW") r = NCHWToNHWC(r);
-  return r;
+});
+
+// Backwards pass tests thru the filter.
+defineTests("bwFilter", (c: ConvTestCase): Tensor => {
+  const input = testInput("float32", c.inputShape);
+  const gradient = testInput("float32", c.outputShape);
+  const opts: ConvOpts = {
+    strides: c.strides,
+    padding: c.padding,
+    format,
+  };
+  const b = bo.conv2dBackpropFilter(gradient.basic, input.basic, c.filterShape,
+                                    opts);
+  return new Tensor(b);
+});
+
+// Backwards pass tests thru the input..
+defineTests("bwInput", (c: ConvTestCase): Tensor => {
+  const filter = testInput("float32", c.filterShape);
+  const gradient = testInput("float32", c.outputShape);
+  const opts: ConvOpts = {
+    strides: c.strides,
+    padding: c.padding,
+    format,
+  };
+  const b = bo.conv2dBackpropInput(gradient.basic, c.inputShape, filter.basic,
+                                    opts);
+  return new Tensor(b);
+});
+
+function testInput(dtype: DType, shape: Shape): Tensor {
+  return range(1, prod(shape) + 1).cast(dtype).reshape(shape);
 }
 
 // Ideally this would be an api.ts function.
 function prod(array: number[]): number {
   return array.reduce((a, b) => a * b);
-}
-
-function NCHWToNHWC(t: Tensor): Tensor {
-  return t.transpose([0, 3, 2, 1]);
 }

@@ -440,4 +440,29 @@ export class OpsDL implements types.BackendOps {
     return input.math.conv2d(input as Array4D, filter as Array4D,
                              null, opts.strides, opts.padding);
   }
+
+  conv2dBackpropFilter(gradient: TensorDL, input: TensorDL,
+                       filterShape: types.Shape,
+                       opts: types.ConvOpts): TensorDL {
+    const math = input.math;
+    ENV.setMath(math);
+    return math.conv2dDerFilter(
+      input as Array4D,
+      gradient as Array4D,
+      filterShape as [number, number, number, number],
+      opts.strides,
+      opts.padding);
+  }
+
+  conv2dBackpropInput(gradient: TensorDL, inputShape: types.Shape,
+                      filter: TensorDL, opts: types.ConvOpts): TensorDL {
+    const math = filter.math;
+    ENV.setMath(math);
+    return math.conv2dDerInput(
+      inputShape as [number, number, number, number],
+      gradient as Array4D,
+      filter as Array4D,
+      opts.strides,
+      opts.padding);
+  }
 }

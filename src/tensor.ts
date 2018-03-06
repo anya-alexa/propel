@@ -709,9 +709,9 @@ export class Tensor implements types.BasicTensor {
   }
 
   /** Preforms 2d convolution.
-   * The input and filter tensors should both be rank 4, with the
-   * input formatted as [batch, height, width, channels] and the
-   * filter [height, width, in chans, out chans].
+   * The input and filter tensors should both be rank 4 and float32, with the
+   * input formatted as [batch, height, width, channels] and the filter
+   * [height, width, in chans, out chans].
    */
   conv2d(filter: Tensor, opts?: types.ConvOpts): Tensor {
     const defaults: types.ConvOpts = {
@@ -719,13 +719,12 @@ export class Tensor implements types.BasicTensor {
       padding: "valid",
       format: "NHWC",
     };
-    opts = Object.assign(defaults, opts);
     const input = this;
     assert(input.dtype === "float32");
     assert(filter.dtype === "float32");
     assert(input.rank === 4);
     assert(filter.rank === 4);
-    return ops.conv2d(input, filter, opts);
+    return ops.conv2d(input, filter, Object.assign(defaults, opts));
   }
 }
 

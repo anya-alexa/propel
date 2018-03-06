@@ -515,11 +515,15 @@ defBW("setDiag", (g) => {
 export const conv2d = defFW("conv2d",
   (input: types.BasicTensor, filter: types.BasicTensor,
    opts: types.ConvOpts) => {
+    saveForBackward(input, filter, opts);
     return bo.conv2d(input, filter, opts);
   });
 defBW("conv2d",
-  (g) => {
-    throw new Error("Not Implemented.");
-  }, (g) => {
-    throw new Error("Not Implemented.");
+  (g, input, filter, opts) => {
+    const b = bo.conv2dBackpropFilter(g, input, filter.shape, opts);
+    return convert(b);
+  },
+  (g, input, filter, opts) => {
+    const b =  bo.conv2dBackpropInput(g, input.shape, filter, opts);
+    return convert(b);
   });

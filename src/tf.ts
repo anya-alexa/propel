@@ -505,6 +505,23 @@ export class OpsTF implements types.BackendOps {
   conv2d(input: TensorTF, filter: TensorTF, opts: types.ConvOpts): TensorTF {
     return execute0("Conv2D", [input, filter], convAttrs(opts));
   }
+
+  conv2dBackpropFilter(gradient: TensorTF, input: TensorTF,
+                       filterShape: types.Shape,
+                       opts: types.ConvOpts): TensorTF {
+    const filterShapeT = int32Small(filterShape);
+    return execute0("Conv2DBackpropFilter",
+                    [input, filterShapeT, gradient],
+                    convAttrs(opts));
+  }
+
+  conv2dBackpropInput(gradient: TensorTF, inputShape: types.Shape,
+                      filter: TensorTF, opts: types.ConvOpts): TensorTF {
+    const inputShapeT = int32Small(inputShape);
+    return execute0("Conv2DBackpropInput",
+                    [inputShapeT, filter, gradient],
+                    convAttrs(opts));
+  }
 }
 
 function convAttrs(opts: types.ConvOpts): AttrDef[] {
