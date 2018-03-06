@@ -39,45 +39,101 @@ function walkRecursiveWithAncestors(node, state, visitors) {
   return walk.recursive(node, state, wrappedVisitors);
 }
 
-class SourceEditor {
-  // TODO: track transformations to enable source maps.
-  parts: string[];
+class SourceChar {
+  constructor(readonly char: string, readonly pos: number = null,
+              readonly file: string = null) {}
+}
 
-  constructor(text) {
-    this.parts = text.split("");
+type Source = SourceChar[];
+type SourceLike = string | Source;
+
+function convert(source: SourceLike, file: string = null): Source {
+  if (typeof source === "string") {
+    source = Array.from(source).map(
+      (char, pos) => new SourceChar(char, pos, file));
+  }
+  return source as Source;
+}
+
+class EditNode {
+  current: Source;
+
+  constructor(source: SourceLike) {
+    this.replace(source);
   }
 
-  text() {
-    return this.parts.join("");
+  prepend(source: SourceLike) {
+    this.current = [...convert(source), ...this.current];
+  }
+
+  append(source: SourceLike) {
+    this.current = [...this.current, ...convert(source)];
+  }
+
+  replace(source: SourceLike) {
+    this.current = [...convert(source)];
+  }
+
+  clear() {
+    this.current = [];
+  }
+}
+
+class SourceEditor {
+  private index: EditNode[];
+
+  constructor(source: SourceLike, file: string = null) {
+    this.source = convert(source, file);
+  }
+
+  get source(): Source {
+    let source: Source = [];
+    for (let i = 0; i < this.index.length; i++) {
+      source = source.concat(this.index[i].current);
+    }
+    return source;
+  }
+
+  set source(source: Source) {
+    if (source.length > 0) {
+      this.index = source.map(char => new EditNode([char]));
+    } else {
+      this.index = [new EditNode([])];
+    }
   }
 
   stratify() {
-    const text = this.text();
-    this.parts = text.split("");
-    return text;
+    const source = this.source;
+    this.source = source;
+    return this.text();
+  }
+
+  text(): string {
+    return this.source.map(char => char.char).join("");
+  }
+
+  first(): EditNode {
+    return this.index[0];
+  }
+
+  last(): EditNode {
+    return this.index[this.index.length - 1];
   }
 
   replace(start, end, str) {
-    let before = "";
-    for (let i = start; i < end; i++) {
-      before += this.parts[i];
-      this.parts[i] = "";
-    }
+    this.index[start].replace(str);
 
-    if (start === end) {
-      str += this.parts[start];
+    for (let i = start + 1; i < end; i++) {
+      this.index[i].clear();
     }
-
-    this.parts[start] = str;
-    return before;
   }
 
-  prepend(node, str) {
-    this.parts[node.start] = str + this.parts[node.start];
+  prepend({ start }, str) {
+    this.index[start].prepend(str);
   }
 
-  append(node, str) {
-    this.parts[node.end - 1] += str;
+  append({ end }, str) {
+    this.index[end - 1].append(str);
   }
 }
 
@@ -257,6 +313,7 @@ const evalScopeVisitors = {
 /* tslint:enable:object-literal-sort-keys*/
 
 function parseAsyncWrapped(src) {
+  console.log(" source : ", src);
   // Parse javascript code which has been wrapped in an async function
   // expression, then find function body node.
   const root = acorn.parse(src, parseOptions);
